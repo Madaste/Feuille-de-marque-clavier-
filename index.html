@@ -664,7 +664,7 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
   </div>
   <div class="chart-panel">
     <h3>Zone de réussite</h3>
-    <p class="help">Points par zone et Zone de réussite.</p>
+    <p class="help">Points par zone et cumul croissant de X vers M.</p>
     <div class="chart-wrap"><svg id="zoneChart" class="zone-chart" viewBox="0 0 720 250" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Répartition des scores et pourcentage cumulé"></svg></div>
   </div>
 </div>
@@ -866,29 +866,36 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
     const svg=document.getElementById("zoneChart");
     const W=720,H=250,left=42,right=18,top=27,base=183;
     const plotW=W-left-right,plotH=base-top;
-    // Lecture de M vers X : pour chaque zone, pourcentage des flèches
-    // dans cette zone ou une zone supérieure.
+    // Les colonnes restent affichées de M à X (de gauche à droite).
+    // La courbe se lit dans le sens inverse : départ à 0 % en X,
+    // puis cumul des flèches en allant vers M jusqu'à atteindre 100 %.
     const cats=["M","1","2","3","4","5","6","7","8","9","10","X"];
     const colors={"M":"#d9d9d9","1":"#ffffff","2":"#ffffff","3":"#000000","4":"#000000","5":"#0057b8","6":"#0057b8","7":"#c00000","8":"#c00000","9":"#ffdf00","10":"#ffdf00","X":"#ffdf00"};
     const maxCount=Math.max(1,...cats.map(k=>counts[k]||0));
     const step=plotW/cats.length,barW=step*0.48;
     const x=i=>left+step*(i+0.5), yPct=p=>base-(p/100)*plotH, yCount=n=>base-(n/maxCount)*plotH;
-    // Pour chaque zone, cumul des flèches de cette zone jusqu'à X.
-    // En lecture M vers X, le plateau à 100 % se termine à la zone
-    // la plus faible effectivement touchée.
+    const traversal=[];
     let running=0;
-    const values=cats.map(k=>{running+=(counts[k]||0);return total?100-(running-(counts[k]||0))/total*100:0;});
-    const fullIndices=values.map((v,i)=>v>=100-1e-9?i:-1).filter(i=>i>=0);
-    const endIndex=total&&fullIndices.length?fullIndices[fullIndices.length-1]:-1;
+    for(let i=cats.length-1;i>=0;i--){
+      if(i===cats.length-1){
+        traversal.push({i, value:0}); // point de départ : X = 0 %
+        running=counts.X||0;
+      }else{
+        running+=(counts[cats[i]]||0);
+        traversal.push({i, value:total?Math.min(100,running/total*100):0});
+      }
+    }
+    const endPos=total?traversal.findIndex(p=>p.value>=100-1e-9):-1;
+    const visiblePoints=endPos>=0?traversal.slice(0,endPos+1):[];
     let closest=-1,bestDiff=Infinity;
-    if(endIndex>=0) values.slice(0,endIndex+1).forEach((v,i)=>{const d=Math.abs(v-80);if(d<bestDiff-1e-9){bestDiff=d;closest=i;}});
+    visiblePoints.forEach((p,pos)=>{const d=Math.abs(p.value-80);if(d<bestDiff-1e-9){bestDiff=d;closest=pos;}});
     let out='';
     [0,20,40,60,80,100].forEach(p=>{const yy=yPct(p);out+='<line class="chart-grid" x1="'+left+'" y1="'+yy+'" x2="'+(W-right)+'" y2="'+yy+'"/><text class="axis-label" x="'+(left-8)+'" y="'+(yy+3)+'" text-anchor="end">'+p+'%</text>';});
     cats.forEach((k,i)=>{const n=counts[k]||0,xx=x(i),yy=yCount(n),height=base-yy;out+='<rect x="'+(xx-barW/2)+'" y="'+yy+'" width="'+barW+'" height="'+height+'" fill="'+colors[k]+'" stroke="#555" stroke-width="1"/><text class="count-label" x="'+xx+'" y="'+(base+13)+'" text-anchor="middle">'+n+'</text><text class="category-label" x="'+xx+'" y="'+(base+29)+'" text-anchor="middle">'+k+'</text>';});
-    if(endIndex>=0){
-      const pts=values.slice(0,endIndex+1).map((v,i)=>x(i)+','+yPct(v)).join(' ');
+    if(visiblePoints.length){
+      const pts=visiblePoints.map(p=>x(p.i)+','+yPct(p.value)).join(' ');
       out+='<polyline fill="none" stroke="#245b85" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="'+pts+'"/>';
-      values.slice(0,endIndex+1).forEach((v,i)=>{const xx=x(i),yy=yPct(v),changed=(i===0)||(Math.abs(v-values[i-1])>1e-9),success=i===closest;out+='<circle cx="'+xx+'" cy="'+yy+'" r="'+(success?6:3.5)+'" class="'+(success?'success-point':'')+'" fill="'+(success?'#c00000':'#245b85')+'"/>';if(changed||success){let labelY=yy-8;if(labelY<top+8)labelY=yy+15;out+='<text x="'+xx+'" y="'+labelY+'" text-anchor="middle" class="pct-label'+(success?' success':'')+'">'+v.toLocaleString("fr-FR",{maximumFractionDigits:1,minimumFractionDigits:0})+'%</text>';}});
+      visiblePoints.forEach((p,pos)=>{const v=p.value,xx=x(p.i),yy=yPct(v),changed=(pos===0)||(Math.abs(v-visiblePoints[pos-1].value)>1e-9),success=pos===closest;out+='<circle cx="'+xx+'" cy="'+yy+'" r="'+(success?6:3.5)+'" class="'+(success?'success-point':'')+'" fill="'+(success?'#c00000':'#245b85')+'"/>';if(changed||success){let labelY=yy-8;if(labelY<top+8)labelY=yy+15;out+='<text x="'+xx+'" y="'+labelY+'" text-anchor="middle" class="pct-label'+(success?' success':'')+'">'+v.toLocaleString("fr-FR",{maximumFractionDigits:1,minimumFractionDigits:0})+'%</text>';}});
     }else{out+='<text class="axis-label" x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle">Saisir des scores pour afficher le cumul</text>';}
     svg.innerHTML=out;
   }
