@@ -63,23 +63,23 @@ td:first-child,th:first-child{font-weight:700;width:72px}
 .score-keyboard .keyboard-current{font-size:.82rem;color:#245b85;text-align:center;margin:8px 0 0}
 @media(max-width:420px){.score-keyboard{padding:9px;margin-top:10px}.score-key{min-height:42px}.score-entry{min-height:40px;min-width:34px}}
 
-/* Sur mobile, le clavier reste ancré en bas et la zone de saisie défile au-dessus. */
-@media(max-width:760px){
-  main{padding-bottom:calc(var(--score-keyboard-space, 250px) + env(safe-area-inset-bottom, 0px) + 18px)}
-  .score-keyboard{
-    position:fixed;
-    left:50%;
-    bottom:env(safe-area-inset-bottom, 0px);
-    transform:translateX(-50%);
-    width:min(100%, 460px);
-    max-width:none;
-    margin:0;
-    z-index:1000;
-    border-radius:14px 14px 0 0;
-    box-shadow:0 -4px 18px #16324f26;
-  }
-  .score-keyboard-title{margin-bottom:6px}
+/* Le clavier reste visible en bas sur PC comme sur mobile.
+   La feuille réserve l'espace nécessaire et la volée active remonte au-dessus. */
+main{padding-bottom:calc(var(--score-keyboard-space, 230px) + env(safe-area-inset-bottom, 0px) + 24px)}
+.score-keyboard{
+  position:fixed;
+  left:50%;
+  bottom:env(safe-area-inset-bottom, 0px);
+  transform:translateX(-50%);
+  width:min(calc(100% - 24px), 460px);
+  max-width:none;
+  margin:0;
+  z-index:1000;
+  border-radius:14px 14px 0 0;
+  box-shadow:0 -4px 18px #16324f26;
 }
+.score-keyboard-title{margin-bottom:6px}
+@media(min-width:761px){.score-keyboard{bottom:12px;border-radius:14px}}
 
 .metric.small .v{font-size:1.2rem}
 .distribution-note{font-size:.8rem;color:var(--muted);margin:6px 0 0}
@@ -690,25 +690,21 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
   function syncScoreKeyboardSpace(){
     const keyboard=document.getElementById("scoreKeyboard");
     if(!keyboard) return;
-    if(window.matchMedia("(max-width: 760px)").matches){
-      document.documentElement.style.setProperty("--score-keyboard-space",(keyboard.offsetHeight+20)+"px");
-    }else{
-      document.documentElement.style.removeProperty("--score-keyboard-space");
-    }
+    document.documentElement.style.setProperty("--score-keyboard-space",(keyboard.offsetHeight+24)+"px");
   }
   function keepActiveRowAboveKeyboard(sel){
-    if(!sel || !sel._display || !window.matchMedia("(max-width: 760px)").matches) return;
+    if(!sel || !sel._display) return;
     const row=sel._display.closest("tr");
     const keyboard=document.getElementById("scoreKeyboard");
     if(!row || !keyboard) return;
     requestAnimationFrame(()=>{
       const rowRect=row.getBoundingClientRect();
       const keyboardRect=keyboard.getBoundingClientRect();
-      const clearance=10;
-      const overlap=rowRect.bottom-(keyboardRect.top-clearance);
-      if(overlap>0){
-        window.scrollBy({top:overlap,behavior:"smooth"});
-      }
+      const clearance=14;
+      const visibleBottom=keyboardRect.top-clearance;
+      const visibleTop=12;
+      if(rowRect.bottom>visibleBottom) window.scrollBy({top:rowRect.bottom-visibleBottom,behavior:"smooth"});
+      else if(rowRect.top<visibleTop) window.scrollBy({top:rowRect.top-visibleTop,behavior:"smooth"});
     });
   }
   function activateScore(sel){
@@ -725,9 +721,10 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
     sel.value=value;
     sel.dispatchEvent(new Event("change",{bubbles:true}));
     const i=allSelects.indexOf(sel);
-    if(value!=="" && i>=0 && i<allSelects.length-1) activateScore(allSelects[i+1]);
-    else activateScore(sel);
-    if(sel._display) sel._display.focus({preventScroll:true});
+    const next=(value!=="" && i>=0 && i<allSelects.length-1)?allSelects[i+1]:sel;
+    activateScore(next);
+    if(next._display) next._display.focus({preventScroll:true});
+    keepActiveRowAboveKeyboard(next);
   }
   document.querySelectorAll(".score-key[data-score]").forEach(btn=>btn.addEventListener("click",()=>{
     if(!activeSelect && allSelects.length) activateScore(allSelects[0]);
