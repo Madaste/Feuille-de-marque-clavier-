@@ -63,6 +63,24 @@ td:first-child,th:first-child{font-weight:700;width:72px}
 .score-keyboard .keyboard-current{font-size:.82rem;color:#245b85;text-align:center;margin:8px 0 0}
 @media(max-width:420px){.score-keyboard{padding:9px;margin-top:10px}.score-key{min-height:42px}.score-entry{min-height:40px;min-width:34px}}
 
+/* Sur mobile, le clavier reste ancré en bas et la zone de saisie défile au-dessus. */
+@media(max-width:760px){
+  main{padding-bottom:calc(var(--score-keyboard-space, 250px) + env(safe-area-inset-bottom, 0px) + 18px)}
+  .score-keyboard{
+    position:fixed;
+    left:50%;
+    bottom:env(safe-area-inset-bottom, 0px);
+    transform:translateX(-50%);
+    width:min(100%, 460px);
+    max-width:none;
+    margin:0;
+    z-index:1000;
+    border-radius:14px 14px 0 0;
+    box-shadow:0 -4px 18px #16324f26;
+  }
+  .score-keyboard-title{margin-bottom:6px}
+}
+
 .metric.small .v{font-size:1.2rem}
 .distribution-note{font-size:.8rem;color:var(--muted);margin:6px 0 0}
 .chart-panels{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
@@ -669,12 +687,37 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
   const allSelects = [];
   const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   let activeSelect = null;
+  function syncScoreKeyboardSpace(){
+    const keyboard=document.getElementById("scoreKeyboard");
+    if(!keyboard) return;
+    if(window.matchMedia("(max-width: 760px)").matches){
+      document.documentElement.style.setProperty("--score-keyboard-space",(keyboard.offsetHeight+20)+"px");
+    }else{
+      document.documentElement.style.removeProperty("--score-keyboard-space");
+    }
+  }
+  function keepActiveRowAboveKeyboard(sel){
+    if(!sel || !sel._display || !window.matchMedia("(max-width: 760px)").matches) return;
+    const row=sel._display.closest("tr");
+    const keyboard=document.getElementById("scoreKeyboard");
+    if(!row || !keyboard) return;
+    requestAnimationFrame(()=>{
+      const rowRect=row.getBoundingClientRect();
+      const keyboardRect=keyboard.getBoundingClientRect();
+      const clearance=10;
+      const overlap=rowRect.bottom-(keyboardRect.top-clearance);
+      if(overlap>0){
+        window.scrollBy({top:overlap,behavior:"smooth"});
+      }
+    });
+  }
   function activateScore(sel){
     if(activeSelect && activeSelect._display) activeSelect._display.classList.remove("active");
     activeSelect=sel;
     if(sel && sel._display){
       sel._display.classList.add("active");
       document.getElementById("keyboardCurrent").textContent=(sel.getAttribute("aria-label")||"Flèche")+" — choisis le score";
+      keepActiveRowAboveKeyboard(sel);
     }
   }
   function setScore(sel,value){
@@ -743,6 +786,9 @@ footer{font-size:.82rem;color:var(--muted);text-align:center;padding:4px 0 18px}
     }
   }
   makeTable("table1",14); makeTable("table2",28);
+  syncScoreKeyboardSpace();
+  window.addEventListener("resize",syncScoreKeyboardSpace);
+  if(window.visualViewport) window.visualViewport.addEventListener("resize",syncScoreKeyboardSpace);
   if(allSelects.length) activateScore(allSelects[0]);
   function paintScore(sel){
     const targets=[sel,sel._display].filter(Boolean);
